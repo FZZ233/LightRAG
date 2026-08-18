@@ -208,6 +208,8 @@
       "description": "查看当前系统状态和连接信息"
     },
     "legend": "图例",
+    "view2dTooltip": "2D 视图",
+    "view3dTooltip": "3D 视图",
     "nodeTypes": {
       "person": "人物角色",
       "category": "分类",

@@ -7,6 +7,7 @@ import { Message, QueryRequest } from '@/api/lightrag'
 type Theme = 'dark' | 'light' | 'system'
 type Language = 'en' | 'zh' | 'fr' | 'ar' | 'zh_TW' | 'ru' | 'ja' | 'de' | 'uk' | 'ko' | 'vi'
 type Tab = 'documents' | 'knowledge-graph' | 'retrieval' | 'api' | 'custom'
+type GraphViewMode = '2d' | '3d'
 
 interface SettingsState {
   // Document manager settings
@@ -33,6 +34,9 @@ interface SettingsState {
   showEdgeLabel: boolean
   enableHideUnselectedEdges: boolean
   enableEdgeEvents: boolean
+
+  graphViewMode: GraphViewMode
+  setGraphViewMode: (mode: GraphViewMode) => void
 
   minEdgeSize: number
   setMinEdgeSize: (size: number) => void
@@ -96,6 +100,8 @@ const useSettingsStoreBase = create<SettingsState>()(
       showEdgeLabel: false,
       enableHideUnselectedEdges: true,
       enableEdgeEvents: false,
+
+      graphViewMode: '2d',
 
       minEdgeSize: 1,
       maxEdgeSize: 1,
@@ -171,6 +177,8 @@ const useSettingsStoreBase = create<SettingsState>()(
 
       setMaxEdgeSize: (size: number) => set({ maxEdgeSize: size }),
 
+      setGraphViewMode: (mode: GraphViewMode) => set({ graphViewMode: mode }),
+
       setEnableHealthCheck: (enable: boolean) => set({ enableHealthCheck: enable }),
 
       setApiKey: (apiKey: string | null) => set({ apiKey }),
@@ -229,7 +237,7 @@ const useSettingsStoreBase = create<SettingsState>()(
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => localStorage),
-      version: 20,
+      version: 21,
       migrate: (state: any, version: number) => {
         if (version < 2) {
           state.showEdgeLabel = false
@@ -342,6 +350,10 @@ const useSettingsStoreBase = create<SettingsState>()(
             ...suggestedUserPrompts.filter((p: string) => !existing.includes(p))
           ]
         }
+        if (version < 21) {
+          // Add graphViewMode field (2D/3D knowledge-graph viewer toggle).
+          state.graphViewMode = '2d'
+        }
         return state
       }
     }
@@ -350,4 +362,4 @@ const useSettingsStoreBase = create<SettingsState>()(
 
 const useSettingsStore = createSelectors(useSettingsStoreBase)
 
-export { useSettingsStore, type Theme }
+export { useSettingsStore, type Theme, type GraphViewMode }

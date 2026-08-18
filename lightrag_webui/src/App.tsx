@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import ThemeProvider from '@/components/ThemeProvider'
 import TabVisibilityProvider from '@/contexts/TabVisibilityProvider'
 import ApiKeyAlert from '@/components/ApiKeyAlert'
@@ -19,10 +19,15 @@ import CustomView from '@/features/CustomView'
 
 import { Tabs, TabsContent } from '@/components/ui/Tabs'
 
+// Lazy-load the 3D viewer so the Three.js bundle is code-split and only fetched
+// when the user actually switches to the 3D graph view.
+const GraphViewer3D = lazy(() => import('@/features/GraphViewer3D'))
+
 function App() {
   const message = useBackendState.use.message()
   const enableHealthCheck = useSettingsStore.use.enableHealthCheck()
   const currentTab = useSettingsStore.use.currentTab()
+  const graphViewMode = useSettingsStore.use.graphViewMode()
   const [apiKeyAlertOpen, setApiKeyAlertOpen] = useState(false)
   const [initializing, setInitializing] = useState(true) // Add initializing state
   const versionCheckRef = useRef(false); // Prevent duplicate calls in Vite dev mode
@@ -211,7 +216,24 @@ function App() {
                   <DocumentManager />
                 </TabsContent>
                 <TabsContent value="knowledge-graph" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
-                  <GraphViewer />
+                  {/* The 2D Sigma viewer stays mounted (hidden when 3D is active)
+                      rather than being unmounted: remounting re-binds the same
+                      graphology graph to a fresh Sigma instance and races its
+                      edge index ("edge can't be repaint"). */}
+                  <div className={`absolute inset-0 ${graphViewMode === '3d' ? 'invisible' : ''}`}>
+                    <GraphViewer />
+                  </div>
+                  {graphViewMode === '3d' && (
+                    <Suspense
+                      fallback={
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="border-primary h-8 w-8 animate-spin rounded-full border-4 border-t-transparent" />
+                        </div>
+                      }
+                    >
+                      <GraphViewer3D />
+                    </Suspense>
+                  )}
                 </TabsContent>
                 <TabsContent value="retrieval" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
                   <RetrievalView />

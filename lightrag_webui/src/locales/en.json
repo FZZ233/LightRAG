@@ -208,6 +208,8 @@
       "description": "View current system status and connection information"
     },
     "legend": "Legend",
+    "view2dTooltip": "2D View",
+    "view3dTooltip": "3D View",
     "nodeTypes": {
       "person": "Person",
       "category": "Category",
