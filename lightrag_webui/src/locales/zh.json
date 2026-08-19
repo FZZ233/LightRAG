@@ -7,9 +7,9 @@
     "system": "系统"
   },
   "header": {
-    "documents": "文档",
-    "knowledgeGraph": "知识图谱",
-    "retrieval": "检索",
+    "documents": "知识构建",
+    "knowledgeGraph": "图谱分析",
+    "retrieval": "知识检索",
     "api": "API",
     "projectRepository": "项目仓库",
     "logout": "退出登录",
@@ -83,9 +83,9 @@
       "deselectAll": "取消全选 ({{count}})"
     },
     "uploadDocuments": {
-      "button": "上传",
-      "tooltip": "上传文档",
-      "title": "上传文档",
+      "button": "数据接入",
+      "tooltip": "上传数据文件",
+      "title": "数据接入",
       "description": "拖拽文件到此处或点击浏览",
       "single": {
         "uploading": "正在上传 {{name}}：{{percent}}%",
@@ -114,16 +114,16 @@
       }
     },
     "documentManager": {
-      "title": "文档管理",
-      "scanButton": "扫描/重试",
-      "scanTooltip": "扫描处理输入目录中的文档，同时重新处理所有失败的文档",
-      "refreshTooltip": "复位文档清单",
-      "pipelineStatusButton": "流水线",
-      "pipelineStatusTooltip": "查看文档处理流水线状态",
-      "uploadedTitle": "已上传文档",
-      "uploadedDescription": "已上传文档列表及其状态",
-      "emptyTitle": "无文档",
-      "emptyDescription": "还没有上传任何文档",
+      "title": "知识构建",
+      "scanButton": "执行构建",
+      "scanTooltip": "扫描并处理输入目录中的数据，同时重试失败任务",
+      "refreshTooltip": "刷新数据接入记录",
+      "pipelineStatusButton": "构建任务",
+      "pipelineStatusTooltip": "查看知识构建任务状态",
+      "uploadedTitle": "数据接入记录",
+      "uploadedDescription": "数据接入记录及其处理状态",
+      "emptyTitle": "暂无接入数据",
+      "emptyDescription": "还没有接入任何数据",
       "columns": {
         "id": "ID",
         "fileName": "文件名",

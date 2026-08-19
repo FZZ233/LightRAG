@@ -89,7 +89,7 @@ export const supportedFileTypes = {
 }
 
 export const SiteInfo = {
-  name: '知识图谱应用平台',
+  name: '北部方向典型场景知识图谱应用平台',
   home: '/',
   github: 'https://github.com/HKUDS/LightRAG'
 }

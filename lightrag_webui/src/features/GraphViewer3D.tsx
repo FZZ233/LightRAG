@@ -25,11 +25,10 @@ import {
   LABEL_RENDER_LIMIT
 } from '@/lib/constants'
 
-// --- Shared WebGL resources (module-level singletons) ---
-// three-forcegraph deallocates an object's material/texture whenever a node or
-// link is removed (expand/prune, visibility toggle, re-digest). Since these are
-// shared across many objects, we neutralize dispose() so one removal can't tear
-// down resources still in use by the rest of the graph.
+// --- 共享的 WebGL 资源（模块级单例） ---
+// three-forcegraph 在移除节点或连线时会释放对象的材质/纹理（展开/裁剪、可见性切换、重新摘要）。
+// 由于这些资源在多个对象之间共享，因此将 dispose() 设为空操作，避免一次移除操作释放
+// 图谱其他部分仍在使用的资源。
 
 const NODE_GLOW_SCALE = 9
 const FADE_LINE_VERTICES = 6
@@ -40,8 +39,7 @@ const LABEL_OFFSET = 3
 const INITIAL_DEPTH_MIN = LINK_DISTANCE * 1.5
 const INITIAL_DEPTH_RATIO = 0.45
 
-// Keep the initial depth stable across renders so expanding or pruning the
-// graph does not make nodes jump to a new random position.
+// 保持初始深度在多次渲染之间稳定，避免展开或裁剪图谱时节点跳到新的随机位置。
 function hashNodeId(id: string): number {
   let hash = 2166136261
   for (let index = 0; index < id.length; index++) {
@@ -60,8 +58,8 @@ let glowTexture: THREE.Texture | null = null
 const spriteMaterials = new Map<string, THREE.SpriteMaterial>()
 let fadeLineMaterial: THREE.ShaderMaterial | null = null
 
-// Solid glowing particle with a crisp outer circumference: a bright interior
-// disc plus a hard, fully-opaque ring so the boundary is clearly defined.
+// 带有清晰外圈的实心发光粒子：明亮的内部圆盘加上完全不透明的硬边圆环，
+// 使粒子边界更加清楚。
 function getGlowTexture(): THREE.Texture {
   if (glowTexture) return glowTexture
   const size = 128
@@ -109,7 +107,7 @@ function getSpriteMaterial(color: string, additive: boolean): THREE.SpriteMateri
   return material
 }
 
-// Per-vertex alpha so each edge fades out toward both endpoints.
+// 使用逐顶点透明度，使每条边向两端逐渐淡出。
 function getFadeLineMaterial(): THREE.ShaderMaterial {
   if (fadeLineMaterial) return fadeLineMaterial
   fadeLineMaterial = new THREE.ShaderMaterial({
@@ -167,16 +165,16 @@ const GraphViewer3D = () => {
   }, [isDark])
   const dimColor = isDark ? '#444444' : '#dddddd'
 
-  // Labels are costly on large graphs; mirror the 2D viewer's threshold.
+  // 大图谱中绘制标签的开销较高，这里沿用 2D 查看器的阈值。
   const showLabels = showNodeLabel && graphNodeCount <= LABEL_RENDER_LIMIT
   const showLabelsRef = useRef(showLabels)
   useEffect(() => {
     showLabelsRef.current = showLabels
   }, [showLabels])
 
-  // Data transformation: graphology graph -> react-force-graph { nodes, links }.
-  // Depends on the reactive count/version mirrors (not just sigmaGraph) because
-  // expand/prune mutate the graph in place without replacing the instance.
+  // 数据转换：graphology 图谱 -> react-force-graph 的 { nodes, links }。
+  // 依赖响应式的数量/版本镜像，而不只是 sigmaGraph，因为展开/裁剪会原地修改图谱，
+  // 不会替换图谱实例。
   const graphData = useMemo(() => {
     if (!sigmaGraph) return { nodes: [], links: [] }
     const planarNodes = sigmaGraph.mapNodes((id: string, attrs: any) => ({
@@ -203,18 +201,18 @@ const GraphViewer3D = () => {
         target,
         label: (attrs.label as string) ?? '',
         weight: (attrs.originalWeight as number) ?? 1,
-        // graphology edge key === store's dynamicId, needed to write back
-        // edge hover/click selection for PropertiesView.
+        // graphology 的边键等于 store 中的 dynamicId，用于将边的悬停/点击选择结果
+        // 写回 PropertiesView。
         __graphId: id
       })
     )
     return { nodes, links }
-    // graphology mutates in place on expand/prune/rename; the count/version
-    // mirrors are required deps to bust this memo's cache.
+    // graphology 在展开/裁剪/重命名时会原地修改图谱，因此数量/版本镜像是刷新此 memo
+    // 缓存所必需的依赖项。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sigmaGraph, graphNodeCount, graphEdgeCount, graphDataVersion])
 
-  // Neighbour set of the active (selected or focused) node, for dimming.
+  // 当前活动节点（选中或聚焦节点）的邻居集合，用于降低其他节点的亮度。
   const neighbors = useMemo(() => {
     const set = new Set<string>()
     const active = selectedNode ?? focusedNode
@@ -234,16 +232,15 @@ const GraphViewer3D = () => {
     [enableHideUnselectedEdges, selectedNode]
   )
 
-  // Glow particle node: a screen-facing sprite tinted by the node color, with a
-  // soft halo from the radial texture. Additive in dark mode (luminous), normal
-  // in light mode (still visible on a bright background).
+  // 发光粒子节点：使用面向屏幕的精灵，并用节点颜色着色；径向纹理提供柔和光晕。
+  // 深色模式使用叠加混合（更有发光感），浅色模式使用普通混合（保证在明亮背景上仍清晰）。
   const nodeThreeObject = useCallback((node: any) => {
     const baseColor = node.color ?? '#5D6D7E'
     const group = new THREE.Group()
     const sprite = new THREE.Sprite(getSpriteMaterial(baseColor, isDarkRef.current))
     const scale = Math.cbrt(node.size ?? 10) * NODE_GLOW_SCALE
     sprite.scale.set(scale, scale, 1)
-    sprite.renderOrder = 20 // draw glow nodes above links
+    sprite.renderOrder = 20 // 让发光节点绘制在连线之上
     group.add(sprite)
     let label: SpriteText | null = null
     if (showLabelsRef.current) {
@@ -261,9 +258,8 @@ const GraphViewer3D = () => {
     return group
   }, [])
 
-  // Fade line: a multi-vertex polyline whose per-vertex alpha stays opaque along
-  // most of the span and fades only at the two endpoints, so the visible edge
-  // reaches close to both particles. Colors are written by the highlight effect.
+  // 淡出连线：由多个顶点组成的折线，大部分线段保持不透明，仅在两端淡出，
+  // 使可见边尽量延伸到两个粒子附近。颜色由高亮效果写入。
   const linkThreeObject = useCallback((link: any) => {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute(
@@ -306,9 +302,8 @@ const GraphViewer3D = () => {
     return true
   }, [])
 
-  // Custom objects bypass the library's accessor-driven color updates, so we
-  // drive dim/highlight colors ourselves. Traversal reflects the current scene
-  // (robust to expand/prune adding/removing objects).
+  // 自定义对象不会经过库的 accessor 颜色更新流程，因此需要在这里自行处理变暗/高亮颜色。
+  // 遍历当前场景可以适应展开/裁剪过程中对象的动态添加和移除。
   useEffect(() => {
     const fg = fgRef.current
     if (!fg) return
@@ -342,12 +337,10 @@ const GraphViewer3D = () => {
     })
   }, [selectedNode, focusedNode, selectedEdge, focusedEdge, neighbors, dimColor, isDark])
 
-  // Spread nodes apart: d3-force-3d defaults to a short link distance (30) and
-  // weak repulsion (-60), which packs the graph too tightly. Tune both before
-  // the simulation starts. useLayoutEffect runs before the debounced digest that
-  // kicks off the layout, and deliberately does NOT reheat: reheating sets
-  // engineRunning=true before state.layout is assigned, which crashes the tick
-  // loop ("Cannot read properties of undefined (reading 'tick')").
+  // 拉开节点间距：d3-force-3d 默认的连线距离较短（30），排斥力较弱（-60），会使图谱过于拥挤。
+  // 在模拟开始前调整这两个参数。useLayoutEffect 会在触发布局的防抖 digest 之前执行，
+  // 并且刻意不重新加热模拟：重新加热会在 state.layout 赋值前设置 engineRunning=true，
+  // 从而导致 tick 循环崩溃（"Cannot read properties of undefined (reading 'tick')"）。
   useLayoutEffect(() => {
     const fg = fgRef.current
     if (!fg) return
@@ -375,7 +368,7 @@ const GraphViewer3D = () => {
     [selectedNode]
   )
 
-  // Focus the camera on the selected node when requested (e.g. search select).
+  // 在收到请求时将相机聚焦到选中节点（例如通过搜索选中节点）。
   useEffect(() => {
     if (!moveToSelectedNode) return
     if (selectedNode && fgRef.current) {

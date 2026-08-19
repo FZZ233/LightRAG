@@ -7,9 +7,9 @@
     "system": "System"
   },
   "header": {
-    "documents": "Documents",
-    "knowledgeGraph": "Knowledge Graph",
-    "retrieval": "Retrieval",
+    "documents": "Knowledge Build",
+    "knowledgeGraph": "Knowledge Graph Analysis",
+    "retrieval": "Intelligent Search",
     "api": "API",
     "projectRepository": "Project Repository",
     "logout": "Logout",
@@ -83,9 +83,9 @@
       "deselectAll": "Deselect All ({{count}})"
     },
     "uploadDocuments": {
-      "button": "Upload",
-      "tooltip": "Upload documents",
-      "title": "Upload Documents",
+      "button": "Data Ingestion",
+      "tooltip": "Upload data files",
+      "title": "Data Ingestion",
       "description": "Drag and drop your documents here or click to browse.",
       "single": {
         "uploading": "Uploading {{name}}: {{percent}}%",
@@ -114,16 +114,16 @@
       }
     },
     "documentManager": {
-      "title": "Document Management",
-      "scanButton": "Scan/Retry",
-      "scanTooltip": "Scan and process documents in input folder, and also reprocess all failed documents",
-      "refreshTooltip": "Reset document list",
-      "pipelineStatusButton": "Pipeline",
-      "pipelineStatusTooltip": "View document processing pipeline status",
-      "uploadedTitle": "Uploaded Documents",
-      "uploadedDescription": "List of uploaded documents and their statuses.",
-      "emptyTitle": "No Documents",
-      "emptyDescription": "There are no uploaded documents yet.",
+      "title": "Knowledge Build",
+      "scanButton": "Run Build",
+      "scanTooltip": "Scan and process data in the input folder, and retry failed tasks",
+      "refreshTooltip": "Refresh ingested data",
+      "pipelineStatusButton": "Build Tasks",
+      "pipelineStatusTooltip": "View knowledge build task status",
+      "uploadedTitle": "Ingested Data",
+      "uploadedDescription": "Ingested data records and processing status.",
+      "emptyTitle": "No Ingested Data",
+      "emptyDescription": "There is no ingested data yet.",
       "columns": {
         "id": "ID",
         "fileName": "File Name",
