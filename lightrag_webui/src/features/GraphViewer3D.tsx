@@ -37,6 +37,24 @@ const LINK_DISTANCE = 60
 const CHARGE_STRENGTH = -60
 const LABEL_TEXT_HEIGHT = 5
 const LABEL_OFFSET = 3
+const INITIAL_DEPTH_MIN = LINK_DISTANCE * 1.5
+const INITIAL_DEPTH_RATIO = 0.45
+
+// Keep the initial depth stable across renders so expanding or pruning the
+// graph does not make nodes jump to a new random position.
+function hashNodeId(id: string): number {
+  let hash = 2166136261
+  for (let index = 0; index < id.length; index++) {
+    hash ^= id.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0) / 4294967295
+}
+
+function getInitialDepth(id: string, index: number, depthScale: number): number {
+  const phase = (hashNodeId(id) + index * 0.61803398875) % 1
+  return (phase * 2 - 1) * depthScale
+}
 
 let glowTexture: THREE.Texture | null = null
 const spriteMaterials = new Map<string, THREE.SpriteMaterial>()
@@ -161,14 +179,23 @@ const GraphViewer3D = () => {
   // expand/prune mutate the graph in place without replacing the instance.
   const graphData = useMemo(() => {
     if (!sigmaGraph) return { nodes: [], links: [] }
-    const nodes = sigmaGraph.mapNodes((id: string, attrs: any) => ({
+    const planarNodes = sigmaGraph.mapNodes((id: string, attrs: any) => ({
       id,
       label: (attrs.label as string) ?? id,
       color: (attrs.color as string) ?? '#5D6D7E',
       size: (attrs.size as number) ?? 10,
       x: (attrs.x as number) ?? 0,
       y: (attrs.y as number) ?? 0,
-      z: 0
+      z: typeof attrs.z === 'number' && Number.isFinite(attrs.z) ? attrs.z : undefined
+    }))
+    const planarExtent = planarNodes.reduce(
+      (extent, node) => Math.max(extent, Math.abs(node.x), Math.abs(node.y)),
+      0
+    )
+    const depthScale = Math.max(INITIAL_DEPTH_MIN, planarExtent * INITIAL_DEPTH_RATIO)
+    const nodes = planarNodes.map((node, index) => ({
+      ...node,
+      z: node.z ?? getInitialDepth(node.id, index, depthScale)
     }))
     const links = sigmaGraph.mapEdges(
       (id: string, attrs: any, source: string, target: string) => ({
@@ -369,6 +396,7 @@ const GraphViewer3D = () => {
       <ForceGraph3D
         ref={fgRef}
         graphData={graphData}
+        numDimensions={3}
         backgroundColor="rgba(0,0,0,0)"
         nodeVal="size"
         nodeThreeObject={nodeThreeObject}
@@ -381,7 +409,7 @@ const GraphViewer3D = () => {
         cooldownTicks={150}
         warmupTicks={sigmaGraph && sigmaGraph.order > 2000 ? 0 : 30}
         onEngineStop={() => {
-          if (!didAutoFitRef.current) {
+          if (!didAutoFitRef.current && graphData.nodes.length > 0) {
             didAutoFitRef.current = true
             fgRef.current?.zoomToFit(600)
           }

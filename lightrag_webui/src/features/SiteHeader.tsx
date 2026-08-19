@@ -15,15 +15,17 @@ interface NavigationTabProps {
   value: string
   currentTab: string
   children: React.ReactNode
+  hidden?: boolean
 }
 
-function NavigationTab({ value, currentTab, children }: NavigationTabProps) {
+function NavigationTab({ value, currentTab, children, hidden = false }: NavigationTabProps) {
   return (
     <TabsTrigger
       value={value}
       className={cn(
         'cursor-pointer px-2 py-1 transition-all',
-        currentTab === value ? '!bg-emerald-400 !text-zinc-50' : 'hover:bg-background/60'
+        currentTab === value ? '!bg-emerald-400 !text-zinc-50' : 'hover:bg-background/60',
+        hidden && 'hidden'
       )}
     >
       {children}
@@ -47,11 +49,8 @@ function TabsNavigation() {
         <NavigationTab value="retrieval" currentTab={currentTab}>
           {t('header.retrieval')}
         </NavigationTab>
-        <NavigationTab value="api" currentTab={currentTab}>
+        <NavigationTab value="api" currentTab={currentTab} hidden>
           {t('header.api')}
-        </NavigationTab>
-        <NavigationTab value="custom" currentTab={currentTab}>
-          {t('header.custom')}
         </NavigationTab>
       </TabsList>
     </div>

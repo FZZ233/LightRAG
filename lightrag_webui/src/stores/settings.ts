@@ -6,7 +6,7 @@ import { Message, QueryRequest } from '@/api/lightrag'
 
 type Theme = 'dark' | 'light' | 'system'
 type Language = 'en' | 'zh' | 'fr' | 'ar' | 'zh_TW' | 'ru' | 'ja' | 'de' | 'uk' | 'ko' | 'vi'
-type Tab = 'documents' | 'knowledge-graph' | 'retrieval' | 'api' | 'custom'
+type Tab = 'documents' | 'knowledge-graph' | 'retrieval' | 'api'
 type GraphViewMode = '2d' | '3d'
 
 interface SettingsState {
@@ -89,7 +89,7 @@ const useSettingsStoreBase = create<SettingsState>()(
   persist(
     (set) => ({
       theme: 'system',
-      language: 'en',
+      language: 'zh',
       showPropertyPanel: true,
       showNodeSearchBar: true,
       showLegend: false,
@@ -237,7 +237,7 @@ const useSettingsStoreBase = create<SettingsState>()(
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => localStorage),
-      version: 21,
+      version: 23,
       migrate: (state: any, version: number) => {
         if (version < 2) {
           state.showEdgeLabel = false
@@ -353,6 +353,17 @@ const useSettingsStoreBase = create<SettingsState>()(
         if (version < 21) {
           // Add graphViewMode field (2D/3D knowledge-graph viewer toggle).
           state.graphViewMode = '2d'
+        }
+        if (version < 22) {
+          // Reset selections for tabs that are no longer available.
+          const validTabs = ['documents', 'knowledge-graph', 'retrieval', 'api']
+          if (!validTabs.includes(state.currentTab)) {
+            state.currentTab = 'documents'
+          }
+        }
+        if (version < 23) {
+          // Use Chinese as the default language after hiding the language switcher.
+          state.language = 'zh'
         }
         return state
       }

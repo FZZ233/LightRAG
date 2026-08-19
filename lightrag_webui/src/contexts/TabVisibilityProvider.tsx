@@ -20,8 +20,7 @@ export const TabVisibilityProvider: React.FC<TabVisibilityProviderProps> = ({ ch
     'documents': true,
     'knowledge-graph': true,
     'retrieval': true,
-    'api': true,
-    'custom': true
+    'api': true
   }));
 
   // Keep all tabs visible because we use CSS to control TAB visibility instead of React.
@@ -33,8 +32,7 @@ export const TabVisibilityProvider: React.FC<TabVisibilityProviderProps> = ({ ch
       'documents': true,
       'knowledge-graph': true,
       'retrieval': true,
-      'api': true,
-      'custom': true
+      'api': true
     })), 0)
     return () => clearTimeout(timer)
   }, [currentTab]);
