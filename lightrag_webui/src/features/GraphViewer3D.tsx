@@ -138,7 +138,7 @@ function getFadeLineMaterial(): THREE.ShaderMaterial {
 
 const GraphViewer3D = () => {
   const fgRef = useRef<any>(null)
-  const didAutoFitRef = useRef(false)
+  // const didAutoFitRef = useRef(false)
 
   const sigmaGraph = useGraphStore.use.sigmaGraph()
   const graphNodeCount = useGraphStore.use.graphNodeCount()
@@ -211,7 +211,28 @@ const GraphViewer3D = () => {
     // 缓存所必需的依赖项。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sigmaGraph, graphNodeCount, graphEdgeCount, graphDataVersion])
+  // 统一 3D 初始视角。
+  // 不使用 zoomToFit，避免首次进入时先小后又自动缩放。
+  const INITIAL_CAMERA_DISTANCE = 500
+  useEffect(() => {
+    const fg = fgRef.current
 
+    if (!fg || graphData.nodes.length === 0) return
+
+    fg.cameraPosition(
+      {
+        x: 0,
+        y: 0,
+        z: INITIAL_CAMERA_DISTANCE
+      },
+      {
+        x: 0,
+        y: 0,
+        z: 0
+      },
+      0
+    )
+  }, [graphData])
   // 当前活动节点（选中或聚焦节点）的邻居集合，用于降低其他节点的亮度。
   const neighbors = useMemo(() => {
     const set = new Set<string>()
@@ -401,12 +422,6 @@ const GraphViewer3D = () => {
         enableNodeDrag={enableNodeDrag}
         cooldownTicks={150}
         warmupTicks={sigmaGraph && sigmaGraph.order > 2000 ? 0 : 30}
-        onEngineStop={() => {
-          if (!didAutoFitRef.current && graphData.nodes.length > 0) {
-            didAutoFitRef.current = true
-            fgRef.current?.zoomToFit(600)
-          }
-        }}
         onNodeHover={(n: any) => useGraphStore.getState().setFocusedNode(n?.id ?? null)}
         onNodeClick={(n: any) => useGraphStore.getState().setSelectedNode(n.id)}
         onLinkHover={(l: any) => useGraphStore.getState().setFocusedEdge(l?.__graphId ?? null)}
