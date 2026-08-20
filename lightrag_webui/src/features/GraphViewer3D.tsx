@@ -31,13 +31,16 @@ import {
 // 图谱其他部分仍在使用的资源。
 
 const NODE_GLOW_SCALE = 9
-const FADE_LINE_VERTICES = 6
 const LINK_DISTANCE = 60
 const CHARGE_STRENGTH = -60
 const LABEL_TEXT_HEIGHT = 5
 const LABEL_OFFSET = 3
 const INITIAL_DEPTH_MIN = LINK_DISTANCE * 1.5
 const INITIAL_DEPTH_RATIO = 0.45
+const THREE_D_LABEL_RENDER_LIMIT = 300
+const THREE_D_PERFORMANCE_NODE_LIMIT = 500
+const THREE_D_PERFORMANCE_EDGE_LIMIT = 1000
+const THREE_D_PERFORMANCE_COOLDOWN_TICKS = 30
 
 // 保持初始深度在多次渲染之间稳定，避免展开或裁剪图谱时节点跳到新的随机位置。
 function hashNodeId(id: string): number {
@@ -56,7 +59,6 @@ function getInitialDepth(id: string, index: number, depthScale: number): number 
 
 let glowTexture: THREE.Texture | null = null
 const spriteMaterials = new Map<string, THREE.SpriteMaterial>()
-let fadeLineMaterial: THREE.ShaderMaterial | null = null
 
 // 带有清晰外圈的实心发光粒子：明亮的内部圆盘加上完全不透明的硬边圆环，
 // 使粒子边界更加清楚。
@@ -107,35 +109,6 @@ function getSpriteMaterial(color: string, additive: boolean): THREE.SpriteMateri
   return material
 }
 
-// 使用逐顶点透明度，使每条边向两端逐渐淡出。
-function getFadeLineMaterial(): THREE.ShaderMaterial {
-  if (fadeLineMaterial) return fadeLineMaterial
-  fadeLineMaterial = new THREE.ShaderMaterial({
-    vertexShader: `
-      attribute vec3 aColor;
-      attribute float aAlpha;
-      varying vec3 vColor;
-      varying float vAlpha;
-      void main() {
-        vColor = aColor;
-        vAlpha = aAlpha;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      varying vec3 vColor;
-      varying float vAlpha;
-      void main() {
-        gl_FragColor = vec4(vColor, vAlpha);
-      }
-    `,
-    transparent: true,
-    depthWrite: false
-  })
-  fadeLineMaterial.dispose = () => undefined
-  return fadeLineMaterial
-}
-
 const GraphViewer3D = () => {
   const fgRef = useRef<any>(null)
   // const didAutoFitRef = useRef(false)
@@ -144,6 +117,8 @@ const GraphViewer3D = () => {
   const graphNodeCount = useGraphStore.use.graphNodeCount()
   const graphEdgeCount = useGraphStore.use.graphEdgeCount()
   const graphDataVersion = useGraphStore.use.graphDataVersion()
+  const isPerformanceMode =
+    graphNodeCount > THREE_D_PERFORMANCE_NODE_LIMIT || graphEdgeCount > THREE_D_PERFORMANCE_EDGE_LIMIT
 
   const selectedNode = useGraphStore.use.selectedNode()
   const focusedNode = useGraphStore.use.focusedNode()
@@ -164,9 +139,23 @@ const GraphViewer3D = () => {
     isDarkRef.current = isDark
   }, [isDark])
   const dimColor = isDark ? '#444444' : '#dddddd'
+  const linkColor = useCallback(
+    (link: any) =>
+      link.__graphId === (selectedEdge ?? focusedEdge)
+        ? edgeColorSelected
+        : (isDark ? edgeColorDarkTheme : '#cccccc'),
+    [focusedEdge, isDark, selectedEdge]
+  )
 
-  // 大图谱中绘制标签的开销较高，这里沿用 2D 查看器的阈值。
-  const showLabels = showNodeLabel && graphNodeCount <= LABEL_RENDER_LIMIT
+  // 高分屏的渲染像素密度会大幅增加 GPU 填充量；大图模式使用标准密度以保持帧率。
+  useEffect(() => {
+    const renderer = fgRef.current?.renderer()
+    if (!renderer) return
+    renderer.setPixelRatio(isPerformanceMode ? 1 : Math.min(2, window.devicePixelRatio))
+  }, [isPerformanceMode])
+
+  // 3D 文字标签会为每个节点创建额外的纹理；大图中提前关闭，避免占用 GPU 和主线程。
+  const showLabels = showNodeLabel && graphNodeCount <= Math.min(LABEL_RENDER_LIMIT, THREE_D_LABEL_RENDER_LIMIT)
   const showLabelsRef = useRef(showLabels)
   useEffect(() => {
     showLabelsRef.current = showLabels
@@ -233,6 +222,13 @@ const GraphViewer3D = () => {
       0
     )
   }, [graphData])
+
+  // 大图模式不响应悬停状态，避免鼠标移动时遍历整张 3D 场景更新颜色。
+  useEffect(() => {
+    if (!isPerformanceMode) return
+    useGraphStore.getState().setFocusedNode(null)
+    useGraphStore.getState().setFocusedEdge(null)
+  }, [isPerformanceMode])
   // 当前活动节点（选中或聚焦节点）的邻居集合，用于降低其他节点的亮度。
   const neighbors = useMemo(() => {
     const set = new Set<string>()
@@ -279,59 +275,12 @@ const GraphViewer3D = () => {
     return group
   }, [])
 
-  // 淡出连线：由多个顶点组成的折线，大部分线段保持不透明，仅在两端淡出，
-  // 使可见边尽量延伸到两个粒子附近。颜色由高亮效果写入。
-  const linkThreeObject = useCallback((link: any) => {
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute(
-      'position',
-      new THREE.BufferAttribute(new Float32Array(FADE_LINE_VERTICES * 3), 3)
-    )
-    geometry.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(FADE_LINE_VERTICES * 3), 3))
-    const alpha = new Float32Array(FADE_LINE_VERTICES)
-    alpha[0] = 0
-    alpha[FADE_LINE_VERTICES - 1] = 0
-    for (let i = 1; i < FADE_LINE_VERTICES - 1; i++) alpha[i] = 1
-    geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1))
-    const line = new THREE.Line(geometry, getFadeLineMaterial())
-    const base = new THREE.Color(isDarkRef.current ? edgeColorDarkTheme : '#cccccc')
-    const colors = geometry.attributes.aColor.array as Float32Array
-    for (let i = 0; i < FADE_LINE_VERTICES; i++) {
-      colors[i * 3] = base.r
-      colors[i * 3 + 1] = base.g
-      colors[i * 3 + 2] = base.b
-    }
-    line.userData = { type: 'fadeLink', linkId: link.__graphId }
-    return line
-  }, [])
-
-  const linkPositionUpdate = useCallback((lineObj: any, { start, end }: any) => {
-    const pos = lineObj.geometry.attributes.position.array as Float32Array
-    const sx = start.x
-    const sy = start.y ?? 0
-    const sz = start.z ?? 0
-    const ex = end.x
-    const ey = end.y ?? 0
-    const ez = end.z ?? 0
-    for (let i = 0; i < FADE_LINE_VERTICES; i++) {
-      const t = i / (FADE_LINE_VERTICES - 1)
-      pos[i * 3] = sx + (ex - sx) * t
-      pos[i * 3 + 1] = sy + (ey - sy) * t
-      pos[i * 3 + 2] = sz + (ez - sz) * t
-    }
-    lineObj.geometry.attributes.position.needsUpdate = true
-    return true
-  }, [])
-
-  // 自定义对象不会经过库的 accessor 颜色更新流程，因此需要在这里自行处理变暗/高亮颜色。
+  // 自定义节点不会经过库的 accessor 颜色更新流程，因此需要在这里自行处理变暗颜色。
   // 遍历当前场景可以适应展开/裁剪过程中对象的动态添加和移除。
   useEffect(() => {
     const fg = fgRef.current
     if (!fg) return
     const activeNode = selectedNode ?? focusedNode
-    const activeEdge = selectedEdge ?? focusedEdge
-    const highlightColor = new THREE.Color(edgeColorSelected)
-    const baseEdgeColor = new THREE.Color(isDark ? edgeColorDarkTheme : '#cccccc')
     fg.scene().traverse((obj: any) => {
       const ud = obj.userData
       if (!ud || !ud.type) return
@@ -345,18 +294,9 @@ const GraphViewer3D = () => {
         if (ud.label) {
           ud.label.color = isDark ? labelColorDarkTheme : labelColorLightTheme
         }
-      } else if (ud.type === 'fadeLink') {
-        const color = activeEdge && ud.linkId === activeEdge ? highlightColor : baseEdgeColor
-        const colors = obj.geometry.attributes.aColor.array as Float32Array
-        for (let i = 0; i < FADE_LINE_VERTICES; i++) {
-          colors[i * 3] = color.r
-          colors[i * 3 + 1] = color.g
-          colors[i * 3 + 2] = color.b
-        }
-        obj.geometry.attributes.aColor.needsUpdate = true
       }
     })
-  }, [selectedNode, focusedNode, selectedEdge, focusedEdge, neighbors, dimColor, isDark])
+  }, [selectedNode, focusedNode, neighbors, dimColor, isDark])
 
   // 拉开节点间距：d3-force-3d 默认的连线距离较短（30），排斥力较弱（-60），会使图谱过于拥挤。
   // 在模拟开始前调整这两个参数。useLayoutEffect 会在触发布局的防抖 digest 之前执行，
@@ -414,17 +354,19 @@ const GraphViewer3D = () => {
         backgroundColor="rgba(0,0,0,0)"
         nodeVal="size"
         nodeThreeObject={nodeThreeObject}
-        nodeLabel={(n: any) => n.label}
-        linkThreeObject={linkThreeObject}
-        linkPositionUpdate={linkPositionUpdate}
+        nodeLabel={isPerformanceMode ? undefined : (n: any) => n.label}
         linkVisibility={linkVisibility}
-        linkLabel={(l: any) => l.label}
+        linkColor={linkColor}
+        linkOpacity={0.9}
+        linkLabel={isPerformanceMode ? undefined : (l: any) => l.label}
         enableNodeDrag={enableNodeDrag}
-        cooldownTicks={150}
-        warmupTicks={sigmaGraph && sigmaGraph.order > 2000 ? 0 : 30}
-        onNodeHover={(n: any) => useGraphStore.getState().setFocusedNode(n?.id ?? null)}
+        d3AlphaDecay={isPerformanceMode ? 0.1 : 0.0228}
+        d3VelocityDecay={isPerformanceMode ? 0.6 : 0.4}
+        cooldownTicks={isPerformanceMode ? THREE_D_PERFORMANCE_COOLDOWN_TICKS : 150}
+        warmupTicks={isPerformanceMode || (sigmaGraph && sigmaGraph.order > 2000) ? 0 : 30}
+        onNodeHover={isPerformanceMode ? undefined : (n: any) => useGraphStore.getState().setFocusedNode(n?.id ?? null)}
         onNodeClick={(n: any) => useGraphStore.getState().setSelectedNode(n.id)}
-        onLinkHover={(l: any) => useGraphStore.getState().setFocusedEdge(l?.__graphId ?? null)}
+        onLinkHover={isPerformanceMode ? undefined : (l: any) => useGraphStore.getState().setFocusedEdge(l?.__graphId ?? null)}
         onLinkClick={(l: any) => useGraphStore.getState().setSelectedEdge(l.__graphId)}
         onBackgroundClick={() => useGraphStore.getState().clearSelection()}
         onNodeDragEnd={(n: any) => {
