@@ -127,6 +127,7 @@
       "columns": {
         "id": "ID",
         "fileName": "File Name",
+        "version": "Version",
         "summary": "Summary",
         "status": "Status",
         "length": "Length",
@@ -329,6 +330,39 @@
       "editProperty": "Edit {{property}}",
       "editLockedByPipeline": "Pipeline is busy; editing disabled",
       "editPropertyDescription": "Edit the property value in the text area below.",
+      "actions": {
+        "createEntity": "Create entity",
+        "createRelation": "Create relation",
+        "deleteSelection": "Delete selection",
+        "selectToDelete": "Select an entity or relation first",
+        "createEntityTitle": "Create entity",
+        "createEntityDescription": "Create an entity in the graph and vector databases.",
+        "createRelationTitle": "Create relation",
+        "createRelationDescription": "Create a relation between two existing entities.",
+        "entityName": "Entity name",
+        "entityType": "Entity type",
+        "sourceEntity": "Source entity",
+        "targetEntity": "Target entity",
+        "description": "Description",
+        "keywords": "Keywords",
+        "create": "Create",
+        "delete": "Delete",
+        "deleteTitle": "Confirm deletion",
+        "deleteEntityDescription": "This permanently deletes entity \"{{name}}\" and all of its relations.",
+        "deleteRelationDescription": "This permanently deletes the relation between \"{{source}}\" and \"{{target}}\".",
+        "errors": {
+          "entityNameRequired": "Enter an entity name",
+          "descriptionRequired": "Enter a description",
+          "relationEndpointsRequired": "Enter both source and target entities",
+          "selfRelation": "Source and target entities must be different"
+        },
+        "success": {
+          "entityCreated": "Entity created successfully",
+          "relationCreated": "Relation created successfully",
+          "entityDeleted": "Entity deleted successfully",
+          "relationDeleted": "Relation deleted successfully"
+        }
+      },
       "errors": {
         "duplicateName": "Node name already exists",
         "invalidEntityName": "Enter a valid node name",

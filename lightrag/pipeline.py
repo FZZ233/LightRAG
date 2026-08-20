@@ -668,6 +668,7 @@ class _PipelineMixin:
         chunk_options: dict | list[dict] | None = None,
         admission_token: str | None = None,
         from_scan: bool = False,
+        document_metadata: dict[str, Any] | None = None,
     ) -> str:
         """
         Pipeline for Processing Documents
@@ -735,7 +736,9 @@ class _PipelineMixin:
                 ``scanning_exclusive``, but ``from_scan=True`` is still
                 forwarded as a defence-in-depth bypass so an unexpected
                 scan-owned write inside the classification window is
-                allowed through.  External callers must leave this False.
+                 allowed through.  External callers must leave this False.
+            document_metadata: optional metadata persisted on the document
+                status record, such as upload version information.
 
         Returns:
             str: tracking ID for monitoring processing status
@@ -1048,6 +1051,8 @@ class _PipelineMixin:
             options_str = _process_options_at(index)
             if options_str:
                 content_data["process_options"] = options_str
+            if document_metadata:
+                content_data["document_metadata"] = dict(document_metadata)
             # Always snapshot chunk_options at enqueue time — independent
             # of whether process_options selected a specific strategy —
             # so the per-doc parameters are frozen even when ``F``
@@ -1112,9 +1117,10 @@ class _PipelineMixin:
             # Re-stamping ``pre_graph`` at the start of a reprocess would be a
             # lie about the PREVIOUS run's contributions — the resume purge
             # would then skip the graph and orphan them.
-            metadata: dict[str, Any] = {
-                KG_WRITE_STATE_METADATA_KEY: KG_WRITE_STATE_PRE_GRAPH,
-            }
+            metadata: dict[str, Any] = dict(
+                content_data.get("document_metadata") or {}
+            )
+            metadata[KG_WRITE_STATE_METADATA_KEY] = KG_WRITE_STATE_PRE_GRAPH
             options_str = content_data.get("process_options") or ""
             if options_str:
                 # Mirror process_options into doc_status.metadata so admin UIs

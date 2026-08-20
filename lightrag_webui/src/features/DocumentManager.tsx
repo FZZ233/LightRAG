@@ -94,13 +94,18 @@ const buildLegacyDocs = (documents: DocStatusResponse[]): DocsStatusesResponse =
 }
 
 const getDisplayFileName = (doc: DocStatusResponse, maxLength: number = 20): string => {
+  const metadataFileName = doc.metadata?.original_file_name
+  const sourcePath = typeof metadataFileName === 'string' && metadataFileName.trim() !== ''
+    ? metadataFileName
+    : doc.file_path
+
   // Check if file_path exists and is a non-empty string
-  if (!doc.file_path || typeof doc.file_path !== 'string' || doc.file_path.trim() === '') {
+  if (!sourcePath || typeof sourcePath !== 'string' || sourcePath.trim() === '') {
     return doc.id;
   }
 
   // Try to extract filename from path
-  const parts = doc.file_path.split('/');
+  const parts = sourcePath.split('/');
   const fileName = parts[parts.length - 1];
 
   // Ensure extracted filename is valid
@@ -112,6 +117,13 @@ const getDisplayFileName = (doc: DocStatusResponse, maxLength: number = 20): str
   return fileName.length > maxLength
     ? fileName.slice(0, maxLength) + '...'
     : fileName;
+};
+
+const getDocumentVersion = (doc: DocStatusResponse): number => {
+  const version = doc.metadata?.version;
+  return typeof version === 'number' && Number.isInteger(version) && version > 0
+    ? version
+    : 1;
 };
 
 const formatMetadata = (metadata: Record<string, any>): string => {
@@ -1596,6 +1608,7 @@ export default function DocumentManager() {
                               )}
                             </div>
                           </TableHead>
+                          <TableHead>{t('documentPanel.documentManager.columns.version')}</TableHead>
                           <TableHead>{t('documentPanel.documentManager.columns.summary')}</TableHead>
                           <TableHead>{t('documentPanel.documentManager.columns.status')}</TableHead>
                           <TableHead>{t('documentPanel.documentManager.columns.length')}</TableHead>
@@ -1662,6 +1675,7 @@ export default function DocumentManager() {
                                 </Tooltip>
                               )}
                             </TableCell>
+                            <TableCell>V{getDocumentVersion(doc)}</TableCell>
                             <TableCell className="max-w-xs min-w-45 truncate overflow-visible">
                               <Tooltip>
                                 <TooltipTrigger asChild>

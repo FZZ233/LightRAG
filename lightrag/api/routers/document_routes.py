@@ -117,7 +117,7 @@ from lightrag.utils import (
     move_file_to_parsed_dir,
     validate_file_path_security,
 )
-from lightrag.kg.shared_storage import append_pipeline_history
+from lightrag.kg.shared_storage import append_pipeline_history, get_storage_keyed_lock
 from lightrag.utils_pipeline import count_active_documents, read_source_file_basename
 from lightrag.api.admission import adopt_admission_ticket
 from lightrag.api.utils_api import get_combined_auth_dependency
@@ -2156,6 +2156,129 @@ def find_existing_file_by_file_path(input_dir: Path, file_path: str) -> Path | N
     return None
 
 
+_UPLOAD_VERSION_HINT_RE = re.compile(r"(\.\[[^\]]*\])(\.[^.]+)$")
+
+
+def versioned_upload_filename(filename: str, version: int) -> str:
+    """Return the on-disk name for an uploaded file version.
+
+    Parser hints stay at the end of the filename so the parser router can
+    continue to recognize names such as ``report.[native].docx``.
+    """
+    if version <= 1:
+        return filename
+
+    match = _UPLOAD_VERSION_HINT_RE.search(filename)
+    if match:
+        return (
+            f"{filename[: match.start(1)]}__v{version}"
+            f"{filename[match.start(1) :]}"
+        )
+
+    suffix = Path(filename).suffix
+    if suffix:
+        return f"{filename[: -len(suffix)]}__v{version}{suffix}"
+    return f"{filename}__v{version}"
+
+
+async def save_versioned_upload(
+    rag: LightRAG,
+    file: UploadFile,
+    input_dir: Path,
+    original_filename: str,
+) -> tuple[Path, int]:
+    """Save an upload under the next available versioned filename."""
+    canonical_original = normalize_file_path(original_filename)
+    workspace = str(getattr(rag, "workspace", "") or "")
+    lock_key = f"{workspace}:{canonical_original}"
+
+    async with get_storage_keyed_lock(
+        lock_key, namespace="document_upload_versions"
+    ):
+        version = 1
+        while True:
+            stored_filename = versioned_upload_filename(original_filename, version)
+            file_path = input_dir / stored_filename
+            canonical_stored = normalize_file_path(stored_filename)
+
+            existing_doc = await get_existing_doc_by_file_path_candidates(
+                rag.doc_status, file_path
+            )
+            existing_input = (
+                file_path
+                if file_path.exists()
+                else find_existing_file_by_file_path(input_dir, canonical_stored)
+            )
+            if existing_input is None:
+                existing_input = find_existing_parsed_file_by_file_path(
+                    input_dir, canonical_stored
+                )
+
+            if existing_doc or existing_input:
+                version += 1
+                continue
+
+            bytes_written = 0
+            chunk_size = 1024 * 1024
+            needs_cleanup = False
+            upload_opener = upload_file_opener(input_dir)
+            out_file_context = aiofiles.open(file_path, "xb", opener=upload_opener)
+            opened = False
+            try:
+                async with out_file_context as out_file:
+                    opened = True
+                    while True:
+                        chunk = await file.read(chunk_size)
+                        if not chunk:
+                            break
+
+                        if (
+                            global_args.max_upload_size is not None
+                            and global_args.max_upload_size > 0
+                        ):
+                            bytes_written += len(chunk)
+                            if bytes_written > global_args.max_upload_size:
+                                needs_cleanup = True
+                                break
+
+                        await out_file.write(chunk)
+            except OSError as e:
+                if not opened:
+                    if isinstance(e, FileExistsError) or e.errno == errno.ELOOP:
+                        version += 1
+                        await file.seek(0)
+                        continue
+                    raise
+
+                try:
+                    file_path.unlink()
+                except OSError as cleanup_error:
+                    logger.error(
+                        f"Error cleaning up partially written file {stored_filename}: "
+                        f"{cleanup_error}"
+                    )
+                raise
+
+            if needs_cleanup:
+                try:
+                    file_path.unlink()
+                except OSError as cleanup_error:
+                    logger.error(
+                        f"Error cleaning up oversized file {stored_filename}: "
+                        f"{cleanup_error}"
+                    )
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"File too large. Maximum size: "
+                        f"{global_args.max_upload_size / 1024 / 1024:.1f}MB, "
+                        f"uploaded: {bytes_written / 1024 / 1024:.1f}MB"
+                    ),
+                )
+
+            return file_path, version
+
+
 def canonicalize_archived_file_variant_basename(
     file_path: Path | str, *, strip_archive_suffix: bool = False
 ) -> str:
@@ -2168,6 +2291,27 @@ def canonicalize_archived_file_variant_basename(
         else path.stem
     )
     return normalize_file_path(f"{stem}{path.suffix}")
+
+
+def find_existing_parsed_file_by_file_path(
+    input_dir: Path, file_path: str
+) -> Path | None:
+    """Find an archived parsed source by its canonical versioned basename."""
+    parsed_dir = input_dir / PARSED_DIR_NAME
+    if not file_path or file_path == UNKNOWN_FILE_SOURCE:
+        return None
+    try:
+        for candidate in parsed_dir.iterdir():
+            if candidate.is_file() and (
+                canonicalize_archived_file_variant_basename(
+                    candidate.name, strip_archive_suffix=True
+                )
+                == file_path
+            ):
+                return candidate
+    except FileNotFoundError:
+        return None
+    return None
 
 
 def _file_path_for_parsed_artifact_dir(dir_name: str) -> str | None:
@@ -2328,6 +2472,7 @@ async def pipeline_enqueue_file(
     from_scan: bool = False,
     admission_token: str | None = None,
     known_file_size: int | None = None,
+    document_metadata: dict[str, Any] | None = None,
 ) -> tuple[bool, str]:
     """Add a file to the queue for processing
 
@@ -2465,6 +2610,8 @@ async def pipeline_enqueue_file(
                 enqueue_kwargs["admission_token"] = admission_token
             if hint_chunk_options is not None:
                 enqueue_kwargs["chunk_options"] = hint_chunk_options
+            if document_metadata:
+                enqueue_kwargs["document_metadata"] = dict(document_metadata)
             enqueue_result = await rag.apipeline_enqueue_documents("", **enqueue_kwargs)
             if enqueue_result is None:
                 try:
@@ -2526,6 +2673,7 @@ async def pipeline_index_file(
     file_path: Path,
     track_id: str = None,
     admission_token: str | None = None,
+    document_metadata: dict[str, Any] | None = None,
 ):
     """Index a file with track_id
 
@@ -2533,13 +2681,19 @@ async def pipeline_index_file(
         rag: LightRAG instance
         file_path: Path to the saved file
         track_id: Optional tracking ID
+        document_metadata: optional metadata persisted on the document status
+            record, such as upload version information.
         admission_token: the endpoint's pending-enqueue reservation, forwarded
             so the admission guard re-weights THAT token to the deduped count
             instead of counting this request twice (LR2 §9.2)
     """
     try:
         success, _ = await pipeline_enqueue_file(
-            rag, file_path, track_id, admission_token=admission_token
+            rag,
+            file_path,
+            track_id,
+            admission_token=admission_token,
+            document_metadata=document_metadata,
         )
         if success:
             await rag.apipeline_process_enqueue_documents()
@@ -5070,24 +5224,16 @@ def create_document_routes(
         - Set to `None` or `0` for unlimited upload size
         - Returns HTTP 413 (Request Entity Too Large) if file exceeds limit
 
-        **Duplicate Detection Behavior:**
+        **Version and Duplicate Detection Behavior:**
 
-        This endpoint handles two types of duplicate scenarios differently:
+        A repeated upload with the same original filename is saved as the next
+        version (for example, ``report.pdf``, ``report__v2.pdf``).  The
+        original filename and version are persisted in document metadata.
+        Parser hints remain at the end of the stored filename.  Identical
+        content is still handled separately by the asynchronous content
+        duplicate check:
 
-        1. **Filename Duplicate (Synchronous Detection)**:
-           - Detected immediately, before any file is written.
-           - File name is treated as the unique document key.  Both
-             ``doc_status`` and the INPUT directory are checked under the
-             canonical (parser-hint stripped) basename so ``abc.docx`` and
-             ``abc.[native].docx`` map to the same record.
-           - **HTTP 409** is returned when a same-name record already exists.
-             The response detail names the conflict source ("Document
-             storage already contains ..." or "Input directory already
-             contains ...").  Clients must delete the existing document
-             (``DELETE /documents/{doc_id}``) before re-uploading; there is
-             no longer a 200 ``status="duplicated"`` soft-fail response.
-
-        2. **Content Duplicate (Asynchronous Detection)**:
+        1. **Content Duplicate (Asynchronous Detection)**:
            - Detected during background processing after content extraction
            - Returns `status="success"` with a new track_id immediately
            - The duplicate is detected later when processing the file content
@@ -5097,11 +5243,6 @@ def create_document_routes(
              - `metadata.is_duplicate=true` with reference to original document
              - `metadata.original_doc_id` points to the existing document
              - `metadata.original_track_id` shows the original upload's track_id
-
-        **Why Different Behavior?**
-        - Filename check is fast (simple lookup), done synchronously
-        - Content extraction is expensive (PDF/DOCX parsing), done asynchronously
-        - This design prevents blocking the client during expensive operations
 
         **Concurrency Constraint:**
         - The endpoint refuses with HTTP 409 only while one of the
@@ -5128,9 +5269,8 @@ def create_document_routes(
                 - status="success": File accepted and queued for processing
 
         Raises:
-            HTTPException: 400 unsupported file type, 409 same-name
-                conflict or scan-classifying / destructive job in
-                flight, 413 file too large, 500 other errors.
+            HTTPException: 400 unsupported file type, 409 scan-classifying /
+                destructive job in flight, 413 file too large, 500 other errors.
         """
         from lightrag.kg.shared_storage import start_reserved_background_task
 
@@ -5187,120 +5327,17 @@ def create_document_routes(
                         f"File size not available in UploadFile for {safe_filename}, will check during streaming"
                     )
 
-            file_path = doc_manager.input_dir / safe_filename
-
-            # Strict name pre-check.  Both the INPUT directory and doc_status
-            # must be free of any same-canonical-basename record before we
-            # accept the upload.  Replacing an existing document requires an
-            # explicit DELETE first; we no longer write a "duplicated" 200
-            # response that silently no-ops.
-            existing_doc_data = await get_existing_doc_by_file_path_candidates(
-                rag.doc_status, file_path
+            file_path, upload_version = await save_versioned_upload(
+                rag,
+                file,
+                doc_manager.input_dir,
+                safe_filename,
             )
-            if existing_doc_data:
-                status = get_doc_status_value(existing_doc_data) or "unknown"
-                raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        f"Document storage already contains '{safe_filename}' "
-                        f"(Status: {status}). Delete the existing record before re-uploading."
-                    ),
-                )
-
-            # INPUT directory check, using canonical parser-hint names.
-            # Fast path: exact filename match avoids iterdir on large input directories.
-            canonical_filename = normalize_file_path(safe_filename)
-            if file_path.exists():
-                existing_input_file: Path | None = file_path
-            else:
-                existing_input_file = find_existing_file_by_file_path(
-                    doc_manager.input_dir, canonical_filename
-                )
-            if existing_input_file:
-                raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        f"Input directory already contains a file with the same "
-                        f"canonical basename ('{existing_input_file.name}'). "
-                        f"Remove or rename it before re-uploading."
-                    ),
-                )
-
-            # Async streaming write with size check
-            bytes_written = 0
-            chunk_size = 1024 * 1024  # 1MB chunks
-            needs_cleanup = False
-
-            upload_opener = upload_file_opener(doc_manager.input_dir)
-            out_file_context = aiofiles.open(file_path, "xb", opener=upload_opener)
-
-            opened = False
-            try:
-                async with out_file_context as out_file:
-                    opened = True
-                    while True:
-                        # Read chunk from upload stream
-                        chunk = await file.read(chunk_size)
-                        if not chunk:
-                            break
-
-                        # Check size limit during streaming (if not checked before)
-                        if (
-                            global_args.max_upload_size is not None
-                            and global_args.max_upload_size > 0
-                        ):
-                            bytes_written += len(chunk)
-                            if bytes_written > global_args.max_upload_size:
-                                needs_cleanup = True
-                                break
-
-                        # Write chunk to file
-                        await out_file.write(chunk)
-
-            except OSError as e:
-                if not opened:
-                    if isinstance(e, FileExistsError) or e.errno == errno.ELOOP:
-                        # The O_EXCL/O_NOFOLLOW conflict this opener exists to
-                        # enforce (name already taken, or refused to follow a
-                        # symlink). No file was created.
-                        raise HTTPException(
-                            status_code=409,
-                            detail=(
-                                f"Input directory already contains '{safe_filename}' or the "
-                                "upload path is unsafe. Remove it before re-uploading."
-                            ),
-                        ) from e
-                    # A genuine server-side open failure (permission denied,
-                    # ENOSPC/EDQUOT, read-only filesystem, ...) rather than a
-                    # name conflict. No file was created, nothing to clean up.
-                    raise
-                # Failure after the file was already created (e.g. ENOSPC/EIO
-                # during write or close) is a server-side fault, not a
-                # client-fixable conflict -- clean up the partial file so a
-                # retry isn't permanently blocked by the exclusive-create
-                # check, then let it propagate to the endpoint's
-                # internal_server_error(e) path.
-                try:
-                    file_path.unlink()
-                except OSError as cleanup_error:
-                    logger.error(
-                        f"Error cleaning up partially written file {safe_filename}: {cleanup_error}"
-                    )
-                raise
-
-            # Cleanup after file is closed
-            if needs_cleanup:
-                try:
-                    file_path.unlink()
-                except Exception as cleanup_error:
-                    logger.error(
-                        f"Error cleaning up oversized file {safe_filename}: {cleanup_error}"
-                    )
-
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"File too large. Maximum size: {global_args.max_upload_size / 1024 / 1024:.1f}MB, uploaded: {bytes_written / 1024 / 1024:.1f}MB",
-                )
+            upload_metadata = {
+                "original_file_name": safe_filename,
+                "version": upload_version,
+                "version_group": normalize_file_path(safe_filename),
+            }
 
             track_id = generate_track_id("upload")
 
@@ -5323,6 +5360,7 @@ def create_document_routes(
                         file_path,
                         track_id,
                         admission_token=enqueue_token,
+                        document_metadata=upload_metadata,
                     )
                 finally:
                     await _release_enqueue_slot(rag, enqueue_token)
@@ -5341,7 +5379,10 @@ def create_document_routes(
 
             return InsertResponse(
                 status="success",
-                message=f"File '{safe_filename}' uploaded successfully. Processing will continue in background.",
+                message=(
+                    f"File '{safe_filename}' uploaded as version {upload_version}. "
+                    "Processing will continue in background."
+                ),
                 track_id=track_id,
             )
 

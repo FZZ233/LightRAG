@@ -2,6 +2,9 @@
 __pycache__
 .cache
 
+# Local JavaScript dependencies are rebuilt inside the frontend stage.
+**/node_modules/
+
 # Virtual environment directories
 *.venv
 

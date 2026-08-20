@@ -5,6 +5,7 @@ import SpriteText from 'three-spritetext'
 import { GraphSearchOption, OptionItem } from '@react-sigma/graph-search'
 
 import GraphLabels from '@/components/graph/GraphLabels'
+import GraphCrudControls from '@/components/graph/GraphCrudControls'
 import GraphSearch from '@/components/graph/GraphSearch'
 import PropertiesView from '@/components/graph/PropertiesView'
 import Legend from '@/components/graph/Legend'
@@ -378,6 +379,7 @@ const GraphViewer3D = () => {
 
       <div className="absolute top-2 left-2 flex items-start gap-2">
         <GraphLabels />
+        <GraphCrudControls />
         {showNodeSearchBar && (
           <GraphSearch value={searchInitSelectedNode} onFocus={onSearchFocus} onChange={onSearchSelect} />
         )}

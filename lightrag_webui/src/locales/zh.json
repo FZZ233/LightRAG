@@ -127,6 +127,7 @@
       "columns": {
         "id": "ID",
         "fileName": "文件名",
+        "version": "版本",
         "summary": "摘要",
         "status": "状态",
         "length": "长度",
@@ -329,6 +330,39 @@
       "editProperty": "编辑{{property}}",
       "editLockedByPipeline": "流水线正忙,暂时无法编辑",
       "editPropertyDescription": "在下方文本区域编辑属性值。",
+      "actions": {
+        "createEntity": "新建实体",
+        "createRelation": "新建关系",
+        "deleteSelection": "删除当前选择",
+        "selectToDelete": "请先选择实体或关系",
+        "createEntityTitle": "新建实体",
+        "createEntityDescription": "创建实体并同步写入图数据库和向量数据库。",
+        "createRelationTitle": "新建关系",
+        "createRelationDescription": "在两个已有实体之间创建关系。",
+        "entityName": "实体名称",
+        "entityType": "实体类型",
+        "sourceEntity": "源实体",
+        "targetEntity": "目标实体",
+        "description": "描述",
+        "keywords": "关键词",
+        "create": "创建",
+        "delete": "删除",
+        "deleteTitle": "确认删除",
+        "deleteEntityDescription": "将永久删除实体“{{name}}”以及与它关联的全部关系。",
+        "deleteRelationDescription": "将永久删除“{{source}}”与“{{target}}”之间的关系。",
+        "errors": {
+          "entityNameRequired": "请输入实体名称",
+          "descriptionRequired": "请输入描述",
+          "relationEndpointsRequired": "请输入源实体和目标实体",
+          "selfRelation": "源实体和目标实体不能相同"
+        },
+        "success": {
+          "entityCreated": "实体创建成功",
+          "relationCreated": "关系创建成功",
+          "entityDeleted": "实体删除成功",
+          "relationDeleted": "关系删除成功"
+        }
+      },
       "errors": {
         "duplicateName": "节点名称已存在",
         "invalidEntityName": "请输入有效的节点名称",

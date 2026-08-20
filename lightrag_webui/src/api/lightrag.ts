@@ -230,6 +230,18 @@ export type EntityUpdateResponse = {
   }
 }
 
+export type GraphMutationResponse = {
+  status: string
+  message: string
+  data?: Record<string, any>
+}
+
+export type GraphDeletionResponse = {
+  status: 'success' | 'not_found' | 'not_allowed' | 'fail'
+  message: string
+  doc_id?: string
+}
+
 export type DocActionResponse = {
   status: 'success' | 'partial_success' | 'failure'
   message: string
@@ -1073,6 +1085,50 @@ export const updateRelation = async (
     source_id: sourceEntity,
     target_id: targetEntity,
     updated_data: updatedData
+  })
+  return response.data
+}
+
+export const createEntity = async (
+  entityName: string,
+  entityData: Record<string, any>
+): Promise<GraphMutationResponse> => {
+  const response = await axiosInstance.post('/graph/entity/create', {
+    entity_name: entityName,
+    entity_data: entityData
+  })
+  return response.data
+}
+
+export const createRelation = async (
+  sourceEntity: string,
+  targetEntity: string,
+  relationData: Record<string, any>
+): Promise<GraphMutationResponse> => {
+  const response = await axiosInstance.post('/graph/relation/create', {
+    source_entity: sourceEntity,
+    target_entity: targetEntity,
+    relation_data: relationData
+  })
+  return response.data
+}
+
+export const deleteEntity = async (entityName: string): Promise<GraphDeletionResponse> => {
+  const response = await axiosInstance.delete('/graph/entity/delete', {
+    data: { entity_name: entityName }
+  })
+  return response.data
+}
+
+export const deleteRelation = async (
+  sourceEntity: string,
+  targetEntity: string
+): Promise<GraphDeletionResponse> => {
+  const response = await axiosInstance.delete('/graph/relation/delete', {
+    data: {
+      source_entity: sourceEntity,
+      target_entity: targetEntity
+    }
   })
   return response.data
 }

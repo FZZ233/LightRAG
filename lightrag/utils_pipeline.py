@@ -364,6 +364,11 @@ KG_RECOVERY_WARNINGS_METADATA_KEY = "kg_recovery_warnings"
 _DOC_STATUS_METADATA_CARRY_OVER_KEYS: tuple[str, ...] = (
     "process_options",
     "source_file",
+    # Upload lineage: these fields identify the original filename and its
+    # immutable version across every pipeline status transition.
+    "original_file_name",
+    "version",
+    "version_group",
     "parse_warnings",
     "chunk_opts",
     "parse_start_time",
@@ -586,6 +591,9 @@ def doc_status_transition_metadata(
 _DOC_STATUS_METADATA_DIRECTIVE_KEYS: tuple[str, ...] = (
     "process_options",
     "source_file",
+    "original_file_name",
+    "version",
+    "version_group",
     # Defense in depth: journaled custom-chunk patch rows are excluded from
     # pipeline processing/reset entirely, but if one ever reaches a reset the
     # journal must survive — stripping it would orphan the operation's staged

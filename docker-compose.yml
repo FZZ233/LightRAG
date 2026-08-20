@@ -19,6 +19,9 @@ services:
         max_attempts: 10
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       WORKING_DIR: "/app/data/rag_storage"
       INPUT_DIR: "/app/data/inputs"
@@ -28,3 +31,27 @@ services:
       # so the exposed server is authenticated — without it every endpoint is public.
       HOST: "0.0.0.0"
       PORT: "9621"
+      # The PostgreSQL service is on the Docker network, not the host network.
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+
+  postgres:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DATABASE:-rag}
+    volumes:
+      - lightrag_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  lightrag_postgres_data:
