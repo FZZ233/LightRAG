@@ -8,6 +8,8 @@ services:
         - ghcr.io/hkuds/lightrag:latest
     ports:
       - "${HOST:-0.0.0.0}:${PORT:-9621}:9621"
+    env_file:  
+      - ".env"
     volumes:
       - ./data/rag_storage:/app/data/rag_storage
       - ./data/inputs:/app/data/inputs
