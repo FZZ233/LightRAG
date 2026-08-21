@@ -3,6 +3,7 @@ import { Theme, useSettingsStore } from '@/stores/settings'
 
 type ThemeProviderProps = {
   children: React.ReactNode
+  forcedTheme?: Theme
 }
 
 type ThemeProviderState = {
@@ -20,15 +21,16 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 /**
  * Component that provides the theme state and setter function to its children.
  */
-export default function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+export default function ThemeProvider({ children, forcedTheme, ...props }: ThemeProviderProps) {
   const theme = useSettingsStore.use.theme()
   const setTheme = useSettingsStore.use.setTheme()
+  const activeTheme = forcedTheme ?? theme
 
   useEffect(() => {
     const root = window.document.documentElement
     root.classList.remove('light', 'dark')
 
-    if (theme === 'system') {
+    if (activeTheme === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
       const handleChange = (e: MediaQueryListEvent) => {
         root.classList.remove('light', 'dark')
@@ -40,9 +42,9 @@ export default function ThemeProvider({ children, ...props }: ThemeProviderProps
 
       return () => mediaQuery.removeEventListener('change', handleChange)
     } else {
-      root.classList.add(theme)
+      root.classList.add(activeTheme)
     }
-  }, [theme])
+  }, [activeTheme])
 
   const value = {
     theme,

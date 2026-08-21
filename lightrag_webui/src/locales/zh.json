@@ -210,6 +210,14 @@
     "legend": "图例",
     "view2dTooltip": "2D 视图",
     "view3dTooltip": "3D 视图",
+    "levelFilter": {
+      "title": "节点级别",
+      "clear": "清除级别筛选",
+      "collapse": "收起级别筛选",
+      "expand": "展开级别筛选",
+      "level": "{{level}} 级",
+      "nodeCount": "{{count}} 个节点"
+    },
     "nodeTypes": {
       "person": "人物角色",
       "category": "分类",

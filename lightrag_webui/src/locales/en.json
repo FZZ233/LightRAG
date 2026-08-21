@@ -210,6 +210,14 @@
     "legend": "Legend",
     "view2dTooltip": "2D View",
     "view3dTooltip": "3D View",
+    "levelFilter": {
+      "title": "Node Levels",
+      "clear": "Clear level filter",
+      "collapse": "Collapse level filter",
+      "expand": "Expand level filter",
+      "level": "Level {{level}}",
+      "nodeCount": "{{count}} nodes"
+    },
     "nodeTypes": {
       "person": "Person",
       "category": "Category",

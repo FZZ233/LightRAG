@@ -32,6 +32,8 @@ function App() {
   const versionCheckRef = useRef(false); // Prevent duplicate calls in Vite dev mode
   const healthCheckInitializedRef = useRef(false); // Prevent duplicate health checks in Vite dev mode
 
+  const is3DGraphActive = currentTab === 'knowledge-graph' && graphViewMode === '3d'
+
   const handleApiKeyAlertOpenChange = useCallback((open: boolean) => {
     setApiKeyAlertOpen(open)
     if (!open) {
@@ -170,7 +172,7 @@ function App() {
   }
 
   return (
-    <ThemeProvider>
+    <ThemeProvider forcedTheme={is3DGraphActive ? 'dark' : undefined}>
       <TabVisibilityProvider>
         {initializing ? (
           // Loading state while initializing with simplified header
